@@ -60,7 +60,7 @@ schedule_task() ->
       , all
       , single 
       , fun() ->
-          io:format("mycount_function ~n", []),
+          io:format("Hello World ~n", []),
           timer:sleep(2000)
   end),
   %% Send the task to the current server module
@@ -156,4 +156,53 @@ count_number_of_trains(Acc, UpdateTime) ->
             count_number_of_trains(0, get_timestamp() + ?UPDATE_TIME);
         true ->
             count_number_of_trains(NewAcc, UpdateTime)
+    end.
+
+random_light() -> 
+    rand:uniform(100).
+
+detect_train() ->
+    Lower_bound = 0,
+    Upper_bound = 100,
+    Threshold = 60,
+    Tolerence = 2,
+    Train_min = 5,
+    L = random_light(),
+    io:format('Value : ~p~n',[L]),
+    if (L>=Lower_bound) and (L<Upper_bound)->  % Check crazy value
+        case counter:current(0) of
+            0-> % Normal
+                counter:reset(1),
+                counter:reset(2),
+                if 
+                    L<Threshold ->
+                        counter:inc(0), %Switch to wagon
+                        counter:inc(1);
+                    L>=Threshold ->
+                        io:format('No~n')
+                end;  
+            1-> % Wagon
+                case counter:current(2)>=Tolerence of
+                    true ->
+                        counter:dec(0), % -> Normal
+                        counter:reset(2),
+                        case counter:current(1)>=Train_min of
+                            true ->
+                                counter:reset(1),
+                                io:format('New Train~n');
+                            false ->
+                                io:format('ERROR. No Train~n')
+                        end;
+                    false ->
+                        if
+                            L<Threshold ->
+                                counter:inc(1),
+                                io:format('Darck = ~p~n',[counter:current(1)]),
+                                counter:reset(2);
+                            L>=Threshold ->
+                                counter:inc(2),
+                                io:format('Light = ~p~n',[counter:current(2)])
+                        end
+                end
+        end
     end.
