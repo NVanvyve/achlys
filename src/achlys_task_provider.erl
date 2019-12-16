@@ -10,6 +10,7 @@
 -export([count_number_of_trains/0]).
 -export([read_lasp/0]).
 -export([schedule_task/0]).
+-export([compute_data/0]).
 
 %% gen_server callbacks
 -export([init/1 ,
@@ -156,3 +157,33 @@ push_to_lasp(Count) ->
     {ok, {_, _, _, _}} = lasp:declare(Id, state_gset),
     Name = node(),
     lasp:update(Id, {add, {Name, Count}}, self()).
+
+
+compute_data(List, OurAcc, GlobalAcc) ->
+   case List of
+	   [] ->
+		   io:format('List is empty !'),	
+		   none;
+	   [Head] ->
+			{Node, Value} = Head, 
+			if 
+				Node == node() ->
+					{OurAcc + Value, GlobalAcc + Value};
+				true ->
+					{OurAcc, GlobalAcc + Value}
+			end;
+	   [Head | Tail] ->
+			{Node, Value} = Head, 
+			if 
+				Node == node() ->
+					compute_data(Tail, OurAcc + Value, GlobalAcc + Value);
+				true ->
+					compute_data(Tail, OurAcc, GlobalAcc + Value)
+			end
+   end. 
+
+compute_data() ->
+	Id = {<<"trains">>, state_gset},
+    {ok, Result} = lasp:query(Id),
+    List = sets:to_list(Result),
+	compute_data(List, 0, 0).
