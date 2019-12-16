@@ -20,7 +20,7 @@
          code_change/3]).
 
 -define(SERVER , ?MODULE).
--define(UPDATE_TIME, 120000).
+-define(UPDATE_TIME, 30000). %30s
 
 -record(state , {}).
 
@@ -28,6 +28,7 @@ start_link() ->
     gen_server:start_link({local , ?SERVER} , ?MODULE , [] , []).
 
 init([]) ->
+    ok = schedule_task(),
     {ok , #state{}}.
 
 handle_call(_Request , _From , State) ->
@@ -97,6 +98,7 @@ is_this_a_train(AccYes, AccNo) ->
             NewAccYes = AccYes + 1,
             if
                 NewAccYes > 5 ->
+                    %wait_end_of_train(1, 1),
                     true;
                 true ->
                     is_this_a_train(NewAccYes, AccNo)
@@ -111,6 +113,23 @@ is_this_a_train(AccYes, AccNo) ->
                     is_this_a_train(AccYes, NewAccNo)
             end
     end.
+
+wait_end_of_train(AccYes, AccNo) -> 
+    Sensor = value_to_boolean(get_pmod_value()),
+    timer:sleep(1000),
+    Ratio = AccYes / AccNo,
+    if 
+        Ratio < 0.8 ->
+            true;
+        true ->
+            case Sensor of 
+                true ->
+                    wait_end_of_train(AccYes + 1, AccNo);
+                false ->
+                    wait_end_of_train(AccYes, AccNo + 1)
+            end
+    end.
+
 count_number_of_trains() ->
     count_number_of_trains(0, get_timestamp() + ?UPDATE_TIME).
 
@@ -120,7 +139,7 @@ count_number_of_trains(Acc, UpdateTime) ->
     NewAcc = Acc + 1,
     if
         UpdateTime < CurrentTime ->
-            io:format("Number of trains : ~p ~n", [NewAcc]),
+            io:format('Number of trains : ~p ~n', [Acc]),
             push_to_lasp(NewAcc),
             count_number_of_trains(0, get_timestamp() + ?UPDATE_TIME);
         true ->
@@ -137,49 +156,3 @@ push_to_lasp(Count) ->
     {ok, {_, _, _, _}} = lasp:declare(Id, state_gset),
     Name = node(),
     lasp:update(Id, {add, {Name, Count}}, self()).
-
-detect_train() ->
-    Lower_bound = 0,
-    Upper_bound = 100,
-    Threshold = 60,
-    Tolerence = 2,
-    Train_min = 5,
-    L = get_pmod_value(),
-    io:format('Value : ~p~n',[L]),
-    if (L>=Lower_bound) and (L<Upper_bound)->  % Check crazy value
-        case counter:current(0) of
-            0-> % Normal
-                counter:reset(1),
-                counter:reset(2),
-                if 
-                    L<Threshold ->
-                        counter:inc(0), %Switch to wagon
-                        counter:inc(1);
-                    L>=Threshold ->
-                        io:format('No~n')
-                end;  
-            1-> % Wagon
-                case counter:current(2)>=Tolerence of
-                    true ->
-                        counter:dec(0), % -> Normal
-                        counter:reset(2),
-                        case counter:current(1)>=Train_min of
-                            true ->
-                                counter:reset(1),
-                                io:format('New Train~n');
-                            false ->
-                                io:format('ERROR. No Train~n')
-                        end;
-                    false ->
-                        if
-                            L<Threshold ->
-                                counter:inc(1),
-                                io:format('Darck = ~p~n',[counter:current(1)]),
-                                counter:reset(2);
-                            L>=Threshold ->
-                                counter:inc(2),
-                                io:format('Light = ~p~n',[counter:current(2)])
-                        end
-                end
-        end
-    end.
