@@ -6,9 +6,10 @@
 -export([start_link/0]).
 %% Adds the pmodnav_task to the working set
 %% using the Achlys task model
--export([add_pmodnav_task/0]).
 -export([is_this_a_train/2]).
 -export([count_number_of_trains/0]).
+-export([read_lasp/0]).
+-export([schedule_task/0]).
 
 %% gen_server callbacks
 -export([init/1 ,
@@ -61,7 +62,8 @@ schedule_task() ->
       , single 
       , fun() ->
           io:format("Hello World ~n", []),
-          timer:sleep(2000)
+          count_number_of_trains()
+
   end),
   %% Send the task to the current server module
   %% after a 0ms delay
@@ -90,8 +92,6 @@ value_to_boolean(Value) ->
 is_this_a_train(AccYes, AccNo) ->
     Sensor = value_to_boolean(get_pmod_value()),
     timer:sleep(1000),
-    %io:format("Current timestamp ~p ~n", [get_timestamp()]),
-    %io:formmat("Yes: ~p No: ~p ~n", [AccYes, AccNo]), 
     case Sensor of 
         true ->
             NewAccYes = AccYes + 1,
@@ -121,13 +121,22 @@ count_number_of_trains(Acc, UpdateTime) ->
     if
         UpdateTime < CurrentTime ->
             io:format("Number of trains : ~p ~n", [NewAcc]),
+            push_to_lasp(NewAcc),
             count_number_of_trains(0, get_timestamp() + ?UPDATE_TIME);
         true ->
             count_number_of_trains(NewAcc, UpdateTime)
     end.
 
-random_light() -> 
-    rand:uniform(100).
+read_lasp() ->
+    Id = {<<"trains">>, state_gset},
+    {ok, Result} = lasp:query(Id),
+    sets:to_list(Result).
+
+push_to_lasp(Count) ->
+    Id = {<<"trains">>, state_gset},
+    {ok, {_, _, _, _}} = lasp:declare(Id, state_gset),
+    Name = node(),
+    lasp:update(Id, {add, {Name, Count}}, self()).
 
 detect_train() ->
     Lower_bound = 0,
@@ -135,7 +144,7 @@ detect_train() ->
     Threshold = 60,
     Tolerence = 2,
     Train_min = 5,
-    L = random_light(),
+    L = get_pmod_value(),
     io:format('Value : ~p~n',[L]),
     if (L>=Lower_bound) and (L<Upper_bound)->  % Check crazy value
         case counter:current(0) of
