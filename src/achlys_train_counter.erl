@@ -1,4 +1,4 @@
--module(achlys_task_provider).
+-module(achlys_train_counter).
 
 -behaviour(gen_server).
 
@@ -21,7 +21,12 @@
          code_change/3]).
 
 -define(SERVER , ?MODULE).
--define(UPDATE_TIME, 30000). %30s
+
+-define(UPDATE_TIME, 30000). % Time in ms between two update
+-define(SLEEP_TIME, 1000). % Time in ms between two measures
+-define(RATIO_T, 2). % Ratio needed to detect a train
+-define(RATIO_NT, 0.8). % Ratio needed to detect end of the train
+-define(DISTANCE, 65). % Treshold for detection
 
 -record(state , {}).
 
@@ -61,9 +66,9 @@ schedule_task() ->
   %% executed exactly once
   Task = achlys:declare(mycount
       , all
-      , single 
+      , single
       , fun() ->
-          io:format("Hello World ~n", []),
+          io:format("Start counting ~n", []),
           count_number_of_trains()
 
   end),
@@ -78,23 +83,24 @@ get_timestamp() ->
     (Mega*1000000 + Sec)*1000 + round(Micro/1000).
 
 % distance sensor simulation
-% Return a value between 0 and 100
-get_pmod_value() ->
-    rand:uniform(100).
+% Return a value between 1 and 200
+get_value() ->
+    % Before real utilisation, must be replace by data from PmodMAXSONAR ultrasonic range sensors
+    1+rand:uniform(199).
 
 % Return true if the value is less than 65, else false
 value_to_boolean(Value) ->
     if
-        Value < 65 ->
+        Value < ?DISTANCE ->
             true;
         true ->
             false
     end.
 
 is_this_a_train(AccYes, AccNo) ->
-    Sensor = value_to_boolean(get_pmod_value()),
-    timer:sleep(1000),
-    case Sensor of 
+    Sensor = value_to_boolean(get_value()),
+    timer:sleep(?SLEEP_TIME),
+    case Sensor of
         true ->
             NewAccYes = AccYes + 1,
             if
@@ -107,23 +113,23 @@ is_this_a_train(AccYes, AccNo) ->
         false ->
             NewAccNo = AccNo + 1,
             Ratio = AccYes / NewAccNo,
-            if 
-                Ratio < 2 ->
+            if
+                Ratio < ?RATIO_T ->
                     is_this_a_train(0,0);
                 true ->
                     is_this_a_train(AccYes, NewAccNo)
             end
     end.
 
-wait_end_of_train(AccYes, AccNo) -> 
-    Sensor = value_to_boolean(get_pmod_value()),
-    timer:sleep(1000),
+wait_end_of_train(AccYes, AccNo) ->
+    Sensor = value_to_boolean(get_value()),
+    timer:sleep(?SLEEP_TIME),
     Ratio = AccYes / AccNo,
-    if 
-        Ratio < 0.8 ->
+    if
+        Ratio < ?RATIO_NT ->
             true;
         true ->
-            case Sensor of 
+            case Sensor of
                 true ->
                     wait_end_of_train(AccYes + 1, AccNo);
                 false ->
@@ -162,25 +168,25 @@ push_to_lasp(Count) ->
 compute_data(List, OurAcc, GlobalAcc) ->
    case List of
 	   [] ->
-		   io:format('List is empty !'),	
+		   io:format('List is empty !'),
 		   none;
 	   [Head] ->
-			{Node, Value} = Head, 
-			if 
+			{Node, Value} = Head,
+			if
 				Node == node() ->
 					{OurAcc + Value, GlobalAcc + Value};
 				true ->
 					{OurAcc, GlobalAcc + Value}
 			end;
 	   [Head | Tail] ->
-			{Node, Value} = Head, 
-			if 
+			{Node, Value} = Head,
+			if
 				Node == node() ->
 					compute_data(Tail, OurAcc + Value, GlobalAcc + Value);
 				true ->
 					compute_data(Tail, OurAcc, GlobalAcc + Value)
 			end
-   end. 
+   end.
 
 compute_data() ->
 	Id = {<<"trains">>, state_gset},
