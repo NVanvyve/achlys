@@ -26,7 +26,7 @@
 -define(SLEEP_TIME, 1000). % Time in ms between two measures
 -define(RATIO_T, 2). % Ratio needed to detect a train
 -define(RATIO_NT, 0.8). % Ratio needed to detect end of the train
--define(DISTANCE, 65). % Treshold for detection
+-define(DISTANCE, 130). % Treshold for detection
 
 -record(state , {}).
 
